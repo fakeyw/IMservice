@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE mapper  
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"  
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd"> 
+  <mapper namespace="dbs.dao.noticeDAO"> 
+  
+  <resultMap type="dbs.tables.notice" id="noticeRes">
+        <result column="serial_num" property="serial_num" />
+        <result column="timestamp" property="timestamp" />
+        <result column="type" property="type" />
+        <result column="content" property="content" />
+  </resultMap>
+  
+  <sql id="Table_Name"> notice </sql> 
+  <sql id="Base_Column_List"> serial_num,timestamp,type,content </sql> 
+  
+  <insert id="addNotice" parameterType="Object">
+  	INSERT INTO notice(timestamp,type,content)
+  	VALUES(#{timestamp},#{type},#{content})
+  </insert>
+  
+  <select id="getLatestNotice" resultMap="noticeRes" parameterType="Object"> 
+  	select <include refid="Base_Column_List" /> 
+  	from <include refid="Table_Name" /> 
+  	where serial_num &gt; #{serial_num} 
+  	ORDER BY serial_num ASC
+  </select> 
+  
+  </mapper>

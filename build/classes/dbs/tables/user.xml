@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE mapper  
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"  
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd"> 
+  <!--这块等于dao接口的实现 namespace必须和接口的类路径一样 --> 
+  <mapper namespace="dbs.dao.userDAO"> 
+  
+  <resultMap type="dbs.tables.user" id="userRes">
+        <result column="user_id" property="user_id" />
+        <result column="credential" property="credential" />
+        <result column="credential_type" property="credential_type" />
+        <result column="hashed_password" property="hashed_password" />
+        <result column="group" property="group" />
+        <result column="nickname" property="nickname" />
+        <result column="sign" property="sign" />
+        <result column="gender" property="gender" />
+  </resultMap>
+  
+  <sql id="Table_Name"> user </sql> 
+  <sql id="Base_Column_List"> 
+  	user_id,credential,credential_type,hashed_password,`group`,nickname,sign,gender 
+  </sql> 
+  
+  <select id="getUserByCred" resultMap="userRes" parameterType="Object"> 
+  	select 
+  	<if test="arg1 == 0">
+  		user_id,hashed_password
+  	</if>
+  	<if test="arg1 == 1">
+  		<include refid="Base_Column_List" /> 
+  	</if>
+  	from <include refid="Table_Name" /> 
+  	where credential = #{arg0} 
+  </select>
+
+  <select id="getUserById" resultMap="userRes" parameterType="Object"> 
+  	select <include refid="Base_Column_List" /> 
+  	from <include refid="Table_Name" /> 
+  	where user_id = #{user_id} 
+  </select>
+  
+  <insert id="addUser" parameterType="dbs.tables.user">
+    INSERT INTO user(credential,credential_type,hashed_password,`group`,nickname,sign,gender)
+    VALUES(#{credential},#{credential_type},#{hashed_password},#{group},#{nickname},#{sign},#{gender})
+  </insert>
+  
+  <update id="updateUser" parameterType="dbs.tables.user">
+  	UPDATE user
+    SET
+    <set>
+    <if test="hashed_password != null ">  
+        hashed_password = #{hashed_password},
+    </if>
+    <if test="group != null ">  
+        `group` = #{group},
+    </if>
+    <if test="nickname != null ">  
+        nickname = #{nickname},
+    </if>
+    <if test="sign != null ">  
+        sign = #{sign},
+    </if>
+    <if test="gender != null ">  
+        gender = #{gender},
+    </if>
+    </set>
+    WHERE user_id = #{user_id}
+  </update>
+  
+  <delete id="deleteUser" parameterType="Object">
+    DELETE FROM user 
+    WHERE user_id = #{user_id}
+  </delete>
+
+  </mapper>
+  
+  
+  

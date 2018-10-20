@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?> <!DOCTYPE mapper  
+  PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"  
+  "http://mybatis.org/dtd/mybatis-3-mapper.dtd"> 
+  <mapper namespace="dbs.dao.offLineMsgDAO"> 
+  
+  <resultMap type="dbs.tables.offLineMsg" id="OLMRes">
+        <result column="to" property="to" />
+        <result column="serial_num" property="serial_num" />
+        <result column="from" property="from" />
+        <result column="timestamp" property="timestamp" />
+        <result column="content" property="content" />
+  </resultMap>
+  
+  <sql id="Table_Name"> offline_msg </sql> 
+  <sql id="Base_Column_List"> `to`,serial_num,`from`,timestamp,content </sql> 
+
+  <select id="getNewOLM" resultMap="OLMRes" parameterType="Object"> 
+  	select <include refid="Base_Column_List" /> 
+  	from <include refid="Table_Name" /> 
+  	where `to` = #{user_id} 
+  	ORDER BY serial_num DESC
+  </select> 
+  
+  <insert id="addBatchOLM" parameterType="java.util.List">
+  	INSERT INTO offline_msg(<include refid="Base_Column_List"/>) values
+    <foreach collection="list" item="item" index="index" separator=",">
+    	(#{item.to},#{item.serial_num},#{item.from},#{item.timestamp},#{item.content})
+    </foreach>
+  </insert>
+  
+  <delete id="clearOLM" parameterType="Object">
+  	DELETE from <include refid="Table_Name"/>
+  	WHERE `to` = #{user_id}
+  </delete>
+  
+  </mapper>
