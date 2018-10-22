@@ -1,3 +1,4 @@
+package service;
 import dbs.Conn2mysql;
 
 public class InstantMsg_service {

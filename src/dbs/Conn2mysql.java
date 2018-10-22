@@ -50,6 +50,11 @@ public class Conn2mysql {
 			user uRes2 = conn.userHandler.getUserByCred("fakeyw@163.com",0);
 			System.out.println(uRes2.getHashed_password());
 			
+			user uRes3 = conn.userHandler.getUserByCred("fasaasa@163.com",0);
+			if(uRes3 == null) {
+				System.out.println("Its null");
+			}
+			
 			//relationship
 			conn.relaHandler.createRela(new relationship(1,100000,0,0));
 			relationship re = conn.relaHandler.relaStat(1, 100000);
