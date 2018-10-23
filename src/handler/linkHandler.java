@@ -7,7 +7,7 @@ import java.net.Socket;
 import java.util.HashMap;
 
 import plugins.crypto;
-import plugins.session;
+import plugins.sessionPool;
 import plugins.sessionThread;
 import service.config;
 import dbs.Conn2mysql;
@@ -23,14 +23,14 @@ import dbs.tables.user;
 public class linkHandler {
 	//TODO 把hashMap换成ConcurrentHashMap？
 	private static Map<Integer,String> userSessionMapper;
-	private static Map<String,session> sessions;
+	private static sessionPool sessions;
 	private static ServerSocket ss;
 	private static Conn2mysql conn;
 	private static boolean working = false;
 	
 	static {
 		userSessionMapper = new HashMap<Integer,String>();
-		sessions = new HashMap<String,session>();
+		sessions= new sessionPool(config.sessionExpire,config.clearDelay);
 		conn = Conn2mysql.getConn();
 	}
 	
@@ -38,17 +38,7 @@ public class linkHandler {
 		try {
 			ss = new ServerSocket(12580);
 			working = true;
-			new Thread(new Runnable() {
-				@Override
-				public void run() {
-					linkHandler.clearExpire();
-					try {
-						Thread.sleep(config.clearDelay);
-					} catch (InterruptedException e) {
-						e.printStackTrace();
-					}
-				}
-			}).start();
+			sessions.startClear();
 		}catch(Exception e) {
 			e.printStackTrace();
 		}
@@ -56,24 +46,10 @@ public class linkHandler {
 			Socket socket;
 			try {
 				socket = ss.accept();
-				new sessionThread(socket);
+				new sessionThread(socket,sessions);
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
-		}
-	}
-	
-	//sessionThread通过这一方法获取对应session并与之绑定
-	public static session findSession(String sessionId) {
-		return sessions.get(sessionId);
-	}
-	
-	//session持久化后自清理时使用
-	public static void deleteSession(String sessionId) {
-		try {
-			sessions.remove(sessionId);
-		}catch(Exception e) {
-			e.printStackTrace();
 		}
 	}
 	
@@ -85,26 +61,12 @@ public class linkHandler {
 		oldSessionId = userSessionMapper.get(user_id);
 		//用户未登录
 		if(oldSessionId == null) {
-			session newSession = new session(sessionId,user_id);
-			sessions.put(sessionId, newSession);
-		}else {	//重复登录时继承之前的session
-			session inheritSession = sessions.get("oldSessionId").inherit(sessionId);
-			sessions.remove(oldSessionId);
-			sessions.put(sessionId, inheritSession);
+			sessions.createSession(sessionId,user_id);
+		}else {	//重复登录/断线重连时继承之前的session
+			sessions.inheritSession(oldSessionId, sessionId);
 		}
 		userSessionMapper.put(user_id, sessionId);
 		return sessionId;
-	}
-	
-	//清理过久未建立消息连接的session
-	public static void clearExpire() {
-		while(linkHandler.isWorking()) {
-			for (session v : sessions.values()) { 
-				if(v.getState() == session.PREPERING && !v.inTime()) {
-					v.destory();
-				}
-			}
-		}
 	}
 	
 	public static void stop() {
@@ -113,6 +75,10 @@ public class linkHandler {
 	
 	public static boolean isWorking() {
 		return working;
+	}
+	
+	public static Conn2mysql getDbsConn() {
+		return conn;
 	}
 }
 

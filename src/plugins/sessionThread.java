@@ -7,7 +7,9 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.util.List;
 
+import dbs.tables.offLineMsg;
 import handler.linkHandler;
 
 //由linkHandler在接收新socket时创建
@@ -18,16 +20,19 @@ import handler.linkHandler;
 //1.检查session状态
 //2.如果在sync则等待状态变为prepareing后继续
 //	此时状态改为sock_online
-//3.检查session的buffer里有没有消息
-//4.如果没有，检查数据库里有没有离线消息
-//5.状态改为working,consumer开始工作
+//3.向mq注册consumer(consumer每次从queue中获取到信息后，都要检查session状态已确定消息写入方向，preparing -> buffer, other -> socket)
+//4.检查session的buffer里有没有消息
+//5.如果没有，检查数据库里有没有离线消息
+//6.状态改为working,consumer开始工作
 public class sessionThread extends Thread{
 	private Socket sock = null;
 	private String currentInfo = "";
 	private session masterSession = null;
+	private sessionPool sp = null;
 	
-	public sessionThread(Socket sock){
+	public sessionThread(Socket sock,sessionPool sp){
 		this.sock = sock;
+		this.sp = sp;
 	}
 	
 	@Override
@@ -35,7 +40,7 @@ public class sessionThread extends Thread{
 		try {
 			this.currentInfo = readSock();
 			if(this.currentInfo != null) {
-				session target = linkHandler.findSession(currentInfo);
+				session target = this.sp.findSession(currentInfo);
 				if(target != null) {
 					target.bindThread(this);
 					this.masterSession = target;
@@ -45,16 +50,37 @@ public class sessionThread extends Thread{
 				}
 			}
 		} catch (IOException e) {
-			//这里断开连接，session还是prepareing状态，不用作处理
+			masterSession = null;
 			e.printStackTrace();
 		}
 		
 		if(this.masterSession != null) {
-			if(masterSession.getState() == session.SYNCING) {
-				masterSession.finishSync();
+			//等待旧consumer将queue中剩余消息转移
+			//或者已进入的持久化过程完成
+			this.masterSession.finishSync();
+			this.masterSession.setState(sessionPool.SOCK_ONLINE);
+			//TODO 绑定新consumer
+			this.masterSession.startConsume();
+			
+			//发送离线消息
+			List<offLineMsg> messages = linkHandler.getDbsConn().OLMHandler.getNewOLM(masterSession.getUserId());
+			this.masterSession.appendBuffer(protocol.packBatchOLM(messages));	//先写入buffer再清数据库（大不了多发一遍）
+			linkHandler.getDbsConn().OLMHandler.clearOLM(masterSession.getUserId());
+			if(this.masterSession.bufferSize() != 0) {
+				for(String s:masterSession.getBuffer()) {
+					try {
+						this.writeSock(s);
+					} catch (IOException e) {
+						this.masterSession.setState(sessionPool.PREPARING);
+						e.printStackTrace();
+					}
+				}
 			}
-			//开始发送离线消息
+			
 		}
+		
+		//后面如果遇到io exception 则将session状态改为prepareing 等待清理/重连
+		//TODO 开始接收用户消息
 	}
 	
 	private String readSock() throws IOException {
