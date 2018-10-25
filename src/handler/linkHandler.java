@@ -1,6 +1,7 @@
 package handler;
 
 import java.util.Map;
+import java.util.concurrent.TimeoutException;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -13,6 +14,10 @@ import service.config;
 import dbs.Conn2mysql;
 import dbs.tables.user;
 
+import com.rabbitmq.client.Channel;
+import com.rabbitmq.client.Connection;
+import com.rabbitmq.client.ConnectionFactory;
+
 /**
  * springMVC接收到登录信息后传给这个组件
  * 完成session建立（或转移）后返回token
@@ -22,6 +27,8 @@ import dbs.tables.user;
  */
 public class linkHandler {
 	//TODO 把hashMap换成ConcurrentHashMap？
+	public static final int USER_OFFLINE = 6;
+	
 	private static Map<Integer,String> userSessionMapper;
 	private static sessionPool sessions;
 	private static ServerSocket ss;
@@ -32,6 +39,21 @@ public class linkHandler {
 		userSessionMapper = new HashMap<Integer,String>();
 		sessions= new sessionPool(config.sessionExpire,config.clearDelay);
 		conn = Conn2mysql.getConn();
+		
+		//创建exchanger
+		ConnectionFactory connectionFactory = new ConnectionFactory();
+		connectionFactory.setHost(config.RMQHost);
+		Connection connection;
+		Channel channel;
+		try {
+			connection = connectionFactory.newConnection();
+			channel = connection.createChannel();
+	        channel.exchangeDeclare("directMsgExchanger", "direct");
+	        channel.close();
+	        connection.close();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 	
 	public static void start(){
@@ -39,6 +61,7 @@ public class linkHandler {
 			ss = new ServerSocket(12580);
 			working = true;
 			sessions.startClear();
+			
 		}catch(Exception e) {
 			e.printStackTrace();
 		}
@@ -67,6 +90,23 @@ public class linkHandler {
 		}
 		userSessionMapper.put(user_id, sessionId);
 		return sessionId;
+	}
+	
+	synchronized public static void userOffLine(int userId,String sessionId) {
+		//只有session未被继承，完全被清除（即sessionId未改变）时才会删除映射
+		if(userSessionMapper.get(userId) == sessionId) {
+			userSessionMapper.remove(userId);
+		}
+	}
+	
+	public static int getUserState(int userId) {
+		String sId = null;
+		sId = userSessionMapper.get(userId);
+		if(sId != null) {
+			return sessions.findSession(sId).getState();
+		}else {
+			return linkHandler.USER_OFFLINE;
+		}
 	}
 	
 	public static void stop() {

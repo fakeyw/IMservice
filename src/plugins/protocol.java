@@ -35,5 +35,13 @@ public class protocol {
 		return OLM;
 	}
 	
+	public static String voice2str(byte[] bs) {
+		return "";
+	}
+	
+	public static List parseMsg(String msg) {
+		return new ArrayList();
+	}
+	
 
 }

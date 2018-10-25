@@ -11,4 +11,5 @@ public class config {
 	public static long mailExpire = 300000;//ms
 	public static long sessionExpire = 60000;//ms
 	public static long clearDelay = 10000;//ms
+	public static String RMQHost = "localhost";
 }

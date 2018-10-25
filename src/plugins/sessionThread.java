@@ -11,6 +11,8 @@ import java.util.List;
 
 import dbs.tables.offLineMsg;
 import handler.linkHandler;
+import plugins.receiver;
+import service.config;
 
 //由linkHandler在接收新socket时创建
 //绑定流程：
@@ -57,10 +59,18 @@ public class sessionThread extends Thread{
 		if(this.masterSession != null) {
 			//等待旧consumer将queue中剩余消息转移
 			//或者已进入的持久化过程完成
+			
+			receiver r = null;
+			try {
+				r = new receiver(config.RMQHost, "directMsgExchanger", this.masterSession);
+				this.masterSession.setReceiver(r);
+			} catch (Exception e) {
+				this.masterSession.setState(sessionPool.PREPARING);
+				e.printStackTrace();
+			}
+			
+			this.masterSession.setState(sessionPool.SOCK_ONLINE);//先setReceiver创建queue，再sock_online接收消息，发送完离线消息再receiver.start()
 			this.masterSession.finishSync();
-			this.masterSession.setState(sessionPool.SOCK_ONLINE);
-			//TODO 绑定新consumer
-			this.masterSession.startConsume();
 			
 			//发送离线消息
 			List<offLineMsg> messages = linkHandler.getDbsConn().OLMHandler.getNewOLM(masterSession.getUserId());
@@ -71,16 +81,53 @@ public class sessionThread extends Thread{
 					try {
 						this.writeSock(s);
 					} catch (IOException e) {
-						this.masterSession.setState(sessionPool.PREPARING);
 						e.printStackTrace();
+						this.masterSession.interrupt();
 					}
 				}
+				this.masterSession.clearBuffer();
 			}
 			
+			this.masterSession.setState(sessionPool.WORKING);
+			if(!r.start()) {//TODO 如果这启动失败了queue里的消息就没了
+				this.masterSession.interrupt();
+			}else {
+				this.masterSession.startConsume();//在旧socket自我消亡后才会endConsume
+			}
+			//后面如果遇到io exception 则将session状态改为preparing 等待清理/重连
+			while(linkHandler.isWorking()) {
+				try {
+					this.currentInfo = this.readSock();
+					//TODO 要解出的信息：发送目标|内容|时间(直接生成)
+					List res = protocol.parseMsg(currentInfo);
+					int userId = (int)res.get(0);
+					String timestamp = (String)res.get(1);
+					String content = (String)res.get(2);
+					//content 里也包括时间信息、从谁发的信息，但不需要包括发送给谁
+					int userState = linkHandler.getUserState(userId);
+					//TODO 补完发送逻辑
+					switch(userState) {
+						case linkHandler.USER_OFFLINE:
+						case sessionPool.PREPARING:
+						case sessionPool.SYNCING://都是直接向数据库存，gtmd序列号，我决定用timestamp排序,管tmd什么序号直接往数据库存
+							
+							break;
+						case sessionPool.SOCK_ONLINE:
+						case sessionPool.WORKING:	//向exchanger发送
+							
+							break;
+						case sessionPool.WAITING_FOR_SYNC://向buffer附加，consumer写完才会进入这一阶段，所以不用担心冲突
+							
+							break;
+					}
+					
+				} catch (IOException e) {
+					this.masterSession.interrupt();
+					e.printStackTrace();
+				}
+			}
+			this.masterSession.interrupt();
 		}
-		
-		//后面如果遇到io exception 则将session状态改为prepareing 等待清理/重连
-		//TODO 开始接收用户消息
 	}
 	
 	private String readSock() throws IOException {
